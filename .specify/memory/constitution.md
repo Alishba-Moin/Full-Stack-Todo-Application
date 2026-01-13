@@ -107,18 +107,26 @@ This Constitution establishes the governing principles, standards, and invariant
 ### Base Model (Phase I - Immutable):
 
 **Todo**:
-  - `id`: unique identifier
-  - `title`: short description
-  - `description`: detailed text (optional)
-  - `completed`: boolean status
+  - `id`: int, auto-increment, unique identifier
+  - `title`: str, required, short description
+  - `description`: str, optional, detailed text
+  - `complete`: bool, default False, boolean status
 
-### Intermediate Extensions (Phase II - Additive):
+### Phase II Extensions (Additive):
 
-  - `priority`: enum (low, medium, high)
-  - `tags`: list of strings
-  - `category`: single classification
+**Task** (extends Todo):
+  - `user_id`: str/UUID, foreign key to users table, required for multi-user
+  - `created_at`: timestamp, default now
+  - `updated_at`: timestamp, on update now
+
+**Users** (managed by Better Auth):
+  - `id`: str/UUID, unique identifier
+  - `email`: str, unique
+  - `name`: str, optional
+  - `password_hash`: str, bcrypt
   - `created_at`: timestamp
-  - `updated_at`: timestamp
+
+**Backward Compatibility**: Phase I in-memory list can migrate to DB with `user_id`.
 
 ### Advanced Extensions (Phase III+ - Additive):
 
@@ -131,7 +139,7 @@ This Constitution establishes the governing principles, standards, and invariant
 ### Invariants:
 
 - `id` is immutable once assigned
-- `completed` is boolean; no intermediate states
+- `complete` is boolean; no intermediate states
 - State transitions are explicit and logged
 - All timestamps use ISO 8601 format
 - All field additions must maintain backward compatibility
@@ -147,7 +155,7 @@ This Constitution establishes the governing principles, standards, and invariant
 ### Python Backend Standards
 
 **Requirements**:
-- Python 3.10+ required
+- Python 3.13+ required
 - Type hints for all public interfaces
 - Modular, single-responsibility design
 - Separation of concerns: domain logic ≠ infrastructure
@@ -160,20 +168,31 @@ This Constitution establishes the governing principles, standards, and invariant
 - Circular dependencies between modules
 - Undocumented magic numbers or strings
 
-### Next.js Frontend Standards (Phase II+)
+### Phase II Stack Requirements
 
-**Requirements**:
-- Clear separation: server components vs. client components
-- Type-safe API contracts (TypeScript interfaces)
-- Responsive design (mobile-first)
-- Accessibility (WCAG 2.1 AA minimum)
-- Error boundaries for graceful degradation
+**Frontend (Next.js 16+)**:
+- MUST use App Router (NOT Pages Router) for all routes
+- Server Components by default for data fetching
+- Client Components only for interactivity (use 'use client' directive sparingly)
+- TypeScript strict mode enabled (no any types, full type safety)
+- Tailwind CSS for styling (no inline styles, no CSS modules; use className only)
+- Better Auth library with JWT plugin enabled for signup/signin
+- Type-safe API client (e.g., in lib/api.ts) for calling backend endpoints with JWT headers
 
-**Forbidden**:
-- Direct database access from frontend
-- Hardcoded API URLs
-- Inline styles (use CSS modules or Tailwind)
-- Unvalidated user input
+**Backend (FastAPI + SQLModel)**:
+- FastAPI framework for API routes
+- SQLModel ORM for database models and queries (NOT raw SQLAlchemy or SQL)
+- Pydantic v2 for request/response validation
+- UV package manager for dependencies
+- Neon Serverless PostgreSQL as database (connection via DATABASE_URL env var)
+
+**Authentication (CRITICAL NON-NEGOTIABLE)**:
+- Better Auth on frontend for user sessions and JWT issuance on login
+- JWT tokens for backend auth (include in Authorization: Bearer header)
+- Shared secret BETTER_AUTH_SECRET env var between frontend and backend for signing/verification
+- Token expiration: 7 days default
+- Password hashing: bcrypt (via Better Auth)
+- All endpoints protected except public ones (e.g., health check)
 
 ### AI Agent Standards (Phase III+)
 
@@ -207,12 +226,26 @@ This Constitution establishes the governing principles, standards, and invariant
 - Mutable infrastructure
 - Unversioned Docker images (no `latest` tag)
 
-## IV. Repository Structure (MANDATORY)
+## IV. Security Requirements (NEW)
 
-### Standard Layout (all phases must conform):
+### User Data Isolation
+- ALL database queries MUST filter by authenticated `user_id` (e.g., WHERE `user_id` = current_user.id)
+- Authorization: ALWAYS verify `user_id` in URL/path matches decoded JWT `user_id` claim to prevent IDOR attacks
+- JWT validation middleware on all protected endpoints (use PyJWT or FastAPI deps)
+- No user can access/modify another user's data – enforce at API level
+
+### Data Integrity & Protection
+- SQL injection prevention: Use SQLModel parameterized queries only
+- Return 404 (not 403) for unauthorized resource access to avoid info leaks
+- Rate limiting and input validation on all endpoints
+
+## V. Repository Structure (MANDATORY)
+
+### Standard Layout (all phases must conform - Monorepo Evolution):
 
 ```
 /
+├── .claude/commands/
 ├── .specify/
 │   ├── memory/
 │   │   └── constitution.md          # THIS FILE
@@ -226,15 +259,27 @@ This Constitution establishes the governing principles, standards, and invariant
 │       ├── <feature-name>/
 │       └── general/
 ├── specs/
+│   ├── 002-fullstack-web-todo/       # New for Phase II specs (overview, plan, tasks, etc.)
+│   │   ├── spec.md                   # Feature specification
+│   │   ├── plan.md                   # Architecture plan
+│   │   └── tasks.md                  # Task breakdown
 │   └── <feature-name>/
-│       ├── spec.md                   # Feature specification
-│       ├── plan.md                   # Architecture plan
-│       └── tasks.md                  # Task breakdown
-├── src/
-│   └── <phase-name>/                 # e.g., phase-1-cli, phase-2-web
-│       ├── core/                     # Domain logic
-│       ├── interfaces/               # CLI/API/UI
-│       └── infrastructure/           # DB, file I/O, external services
+├── frontend/                         # Next.js App
+│   ├── CLAUDE.md
+│   ├── app/                          # App Router
+│   ├── components/
+│   ├── lib/
+│   └── ...
+├── backend/                          # FastAPI App
+│   ├── CLAUDE.md
+│   ├── src/                          # main.py, models.py, routes/
+│   ├── tests/
+│   └── ...
+├── src/                              # Phase I /src kept as reference
+│   └── <phase-name>/
+│       ├── core/
+│       ├── interfaces/
+│       └── infrastructure/
 ├── tests/
 │   ├── unit/
 │   ├── integration/
@@ -246,135 +291,39 @@ This Constitution establishes the governing principles, standards, and invariant
 ├── docs/
 │   └── <phase-name>/
 │       └── README.md                 # Setup and usage per phase
+├── .env.backend.example
+├── .env.example
+├── .env.frontend.example
+├── .gitignore
+├── CLAUDE.md                         # Root instructions
+├── IMPLEMENTATION_SUMMARY.md
 ├── README.md                         # Project overview
-└── CLAUDE.md                         # AI agent instructions
+└── docker-compose.yml
 ```
 
-**Enforcement**: No alternative structures permitted. All new phases MUST follow this layout.
+**Enforcement**: Evolve existing Phase I structure into monorepo; no new repos or folders for phases. All new phases MUST follow this layout.
 
-## V. Quality Standards (Global)
+## VI. Testing Requirements (UPDATE AND EXPAND)
 
-### Specification Quality
+### Universal Testing Principles
+- Keep Phase I unit tests.
+- Minimum 80% code coverage target (use `pytest-cov` for backend, `jest coverage` for frontend).
 
-**Required Elements**:
-- Clear problem statement
-- User stories with acceptance criteria
-- Edge cases and error scenarios explicitly listed
-- Performance requirements (if applicable)
-- Security considerations
-- Success metrics
+### Phase II Test Types (NEW)
+- **API Integration Tests**: Contract testing with FastAPI TestClient.
+- **Component Tests**: For React/Next.js components using Jest/React Testing Library.
+- **E2E User Journey Tests**: E.g., Cypress or Playwright for full flows like signup + add task.
+- **Authentication Flow Tests**: Login, token refresh, unauthorized access.
+- **User Isolation Tests**: Security critical: multi-user scenarios, no data leak.
 
-**Forbidden**:
-- Ambiguous requirements ("should be fast", "user-friendly")
-- Implementation details in specs (specs define WHAT, not HOW)
-- Untestable acceptance criteria
+## VII. API-First Principles (NEW)
 
-### Code Quality
-
-**Requirements**:
-- Clean, readable, self-documenting code
-- Consistent naming conventions
-- Minimal complexity (cyclomatic complexity < 10 per function)
-- No code duplication (DRY principle)
-- Error handling for all failure modes
-- Logging for debugging and audit trails
-
-**Forbidden**:
-- Over-engineering or premature optimization
-- God objects or god functions
-- Magic numbers or strings
-- Dead code or commented-out code blocks
-
-### Documentation Quality
-
-**Required per Phase**:
-- `README.md`: Setup instructions, dependencies, how to run
-- `CLAUDE.md`: AI agent operational instructions
-- Inline code comments for complex logic ONLY
-- API documentation (OpenAPI/Swagger for REST APIs)
-- Database schema documentation
-
-**Standards**:
-- Documentation is versioned with code
-- Outdated documentation is worse than no documentation (keep it current)
-- Examples and usage patterns included
-
-## VI. Security & Compliance
-
-### Universal Security Rules
-
-**Requirements**:
-- Input validation on all external data
-- SQL injection prevention (use parameterized queries)
-- XSS prevention (escape output, CSP headers)
-- CSRF protection for state-changing operations
-- Authentication and authorization for Phase II+
-- Secrets management (environment variables, secret managers)
-- HTTPS/TLS for all production traffic
-- Regular dependency vulnerability scanning
-
-**Forbidden**:
-- Storing passwords in plaintext
-- Trusting client-side validation alone
-- Exposing sensitive data in logs or error messages
-- Using deprecated cryptographic algorithms
-
-### Data Privacy
-
-**Requirements**:
-- Minimal data collection (only what's needed)
-- Clear data retention policies
-- Secure data deletion mechanisms
-- Privacy-by-design principles
-
-## VII. Phase Evolution Rules
-
-### Phase Transition Requirements
-
-**Before Starting a New Phase**:
-- Previous phase MUST be complete and tested
-- ADR documenting the phase transition MUST exist
-- Migration plan documented (if data/schema changes)
-- Backward compatibility strategy defined
-- Regression test suite from prior phases passing
-
-### Phase Independence:
-
-- Each phase is independently deployable
-- Phase II does not require Phase I to be running (unless explicitly designed as extension)
-- Clear interface boundaries between phases
-
-### Supported Phases (Evolution Path)
-
-- **Phase I: In-Memory Python CLI**
-  - Core domain model
-  - CRUD operations
-  - File-based persistence (optional)
-  - CLI interface
-
-- **Phase II: Web Application**
-  - REST API (FastAPI)
-  - Next.js frontend
-  - Database persistence (PostgreSQL/SQLite)
-  - Authentication and authorization
-
-- **Phase III: AI-Powered**
-  - Natural language interface
-  - AI agent integration
-  - Smart suggestions and automation
-  - Voice/chat interfaces
-
-- **Phase IV: Cloud-Native Distributed**
-  - Microservices architecture
-  - Event-driven design (Kafka/RabbitMQ)
-  - Kubernetes deployment
-  - Scalability and fault tolerance
-
-- **Phase V: Enterprise Features**
-  - Multi-tenancy
-  - Advanced analytics
-  - Integrations (Slack, email, calendars)
-  - Audit logging and compliance
+### API Contract Definition
+- API contracts MUST be defined in `specs/api/` before implementation.
+- Backend implements API contract first (REST endpoints with OpenAPI/Swagger auto-generated).
+- Frontend consumes via type-safe client (e.g., fetch with types).
+- Contract breaking changes require ADR (Architecture Decision Record).
+- All endpoints include `user_id` in path for isolation.
 
 ## VIII. Workflow Enforcement
 
@@ -506,7 +455,7 @@ If ALL THREE = YES: Suggest ADR creation
 - Communicate to all project stakeholders
 
 **Versioning**: MAJOR.MINOR.PATCH
-- **MAJOR**: Fundamental principle changes, breaking compatibility
+- **MAJOR**: Fundamental principle changes, breaking compatibility (e.g., 1.0.0 -> 2.0.0 for Phase II)
 - **MINOR**: New principles or clarifications
 - **PATCH**: Typo fixes, formatting improvements
 
@@ -576,11 +525,12 @@ This Constitution represents the governing law of The Evolution of Todo project.
 
 **Non-Compliance**: Work that violates this Constitution MUST be rejected and regenerated according to SDD principles.
 
-**Version**: 1.0.0
-**Ratified**: 2025-12-28
-**Last Amended**: 2025-12-28
+**Version**: 2.0.0
+**Rationale for MAJOR bump**: New stack, auth mandates, monorepo, schema extensions.
+**Ratified**: 2026-01-02
+**Last Amended**: 2026-01-02
 **Status**: Active and Binding
 
 ---
 
-*"Spec first, code second. Human architects, AI builds. Evolution through discipline."*
+*"Spec first, code second. Human architects, AI builds. Evolution through discipline."'*

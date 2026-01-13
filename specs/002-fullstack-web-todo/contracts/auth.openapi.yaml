@@ -1,0 +1,173 @@
+openapi: 3.0.0
+info:
+  title: Todo API - Phase II Auth
+  version: 2.0.0
+  description: API for user authentication (signup, signin) for the Todo application. Handled by Better Auth.
+
+servers:
+  - url: http://localhost:8000/api/auth
+    description: Local Authentication Server
+
+# Note: Better Auth typically manages authentication flows internally,
+# exposing only minimal endpoints for token exchange or user creation.
+# The actual endpoints will depend on Better Auth's specific implementation.
+# This OpenAPI spec assumes Better Auth provides standard /signup and /signin (token) endpoints.
+
+components:
+  schemas:
+    UserSignupRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+        password:
+          type: string
+          format: password
+          description: User's password
+          minLength: 8
+        name:
+          type: string
+          description: Optional user display name
+      required:
+        - email
+        - password
+
+    UserLoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+        password:
+          type: string
+          format: password
+          description: User's password
+      required:
+        - email
+        - password
+
+    AuthTokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+        token_type:
+          type: string
+          default: bearer
+        expires_in:
+          type: integer
+          description: Token expiration in seconds
+      required:
+        - access_token
+        - token_type
+
+    UserRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the user
+        email:
+          type: string
+          format: email
+          description: User's email address
+        name:
+          type: string
+          description: Optional user display name
+      required:
+        - id
+        - email
+
+    HTTPValidationError:
+      type: object
+      title: HTTPValidationError
+      properties:
+        detail:
+          type: array
+          title: Detail
+          items:
+            $ref: '#/components/schemas/ValidationError'
+
+    ValidationError:
+      type: object
+      title: ValidationError
+      required:
+        - loc
+        - msg
+        - type
+      properties:
+        loc:
+          type: array
+          title: Location
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+
+paths:
+  /signup:
+    post:
+      summary: Register a new user account
+      operationId: signup_user
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserSignupRequest'
+      responses:
+        '201':
+          description: User successfully registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRead'
+        '400':
+          description: Bad Request (e.g., email already registered)
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+
+  /signin:
+    post:
+      summary: Authenticate user and get JWT token
+      operationId: signin_user
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLoginRequest'
+      responses:
+        '200':
+          description: User authenticated, returns JWT token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+        '401':
+          description: Unauthorized (invalid credentials)
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
