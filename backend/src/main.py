@@ -21,6 +21,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://full-stack-todo-application-black.vercel.app",
         "http://localhost:3000",  # Next.js frontend (development - port 3000)
         "http://localhost:3001",  # Next.js frontend (development - port 3001)
         "http://frontend:3000",   # Docker frontend service
